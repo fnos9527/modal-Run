@@ -4,29 +4,89 @@ on:
   workflow_dispatch:
     inputs:
       deploy_region:
-        description: '部署区域'
+        description: '选择部署区域（Broad 自动分配 / Specific 精确指定）'
         required: false
-        default: 'us-east'
+        default: 'us-east | 美国东部（自动分配）'
         type: choice
         options:
-          - us-east
-          - us-central
-          - us-west
-          - eu-west
-          - eu-north
-          - ap-northeast
-          - ap-southeast
-          - ap-south
-          - ca
-          - uk
-          - jp
-          - me
-          - sa
+          # ====== 美国东部 ======
+          - 'us-east | 美国东部（自动分配）'
+          - 'us-east-1 | AWS 弗吉尼亚州'
+          - 'us-east-2 | AWS 俄亥俄州'
+          - 'us-east1 | GCP 南卡罗来纳州'
+          - 'us-east4 | GCP 弗吉尼亚州'
+          - 'us-east5 | GCP 俄亥俄州'
+          - 'us-ashburn-1 | OCI 弗吉尼亚州'
+          # ====== 美国中部 ======
+          - 'us-central | 美国中部（自动分配）'
+          - 'us-central1 | GCP 艾奥瓦州'
+          - 'us-chicago-1 | OCI 芝加哥'
+          - 'us-phoenix-1 | OCI 凤凰城'
+          # ====== 美国西部 ======
+          - 'us-west | 美国西部（自动分配）'
+          - 'us-west-1 | AWS 加利福尼亚'
+          - 'us-west-2 | AWS 俄勒冈州'
+          - 'us-west1 | GCP 俄勒冈州'
+          - 'us-west3 | GCP 犹他州'
+          - 'us-west4 | GCP 内华达州'
+          - 'us-sanjose-1 | OCI 圣何塞'
+          # ====== 欧洲西部 ======
+          - 'eu-west | 欧洲西部（自动分配）'
+          - 'eu-central-1 | AWS 德国法兰克福'
+          - 'eu-west-1 | AWS 爱尔兰'
+          - 'eu-west-3 | AWS 法国巴黎'
+          - 'europe-west1 | GCP 比利时'
+          - 'europe-west3 | GCP 德国法兰克福'
+          - 'europe-west4 | GCP 荷兰'
+          - 'eu-frankfurt-1 | OCI 德国法兰克福'
+          - 'eu-paris-1 | OCI 法国巴黎'
+          # ====== 北欧 ======
+          - 'eu-north | 北欧（自动分配）'
+          - 'eu-north-1 | AWS 瑞典斯德哥尔摩'
+          # ====== 亚太东北 ======
+          - 'ap-northeast | 亚太东北（自动分配）'
+          - 'asia-northeast1 | GCP 日本东京'
+          - 'asia-northeast3 | GCP 韩国首尔'
+          - 'ap-northeast-1 | AWS 日本东京'
+          - 'ap-northeast-3 | AWS 日本大阪'
+          # ====== 亚太东南 ======
+          - 'ap-southeast | 亚太东南（自动分配）'
+          - 'asia-southeast1 | GCP 新加坡'
+          - 'ap-southeast-3 | AWS 印尼雅加达'
+          # ====== 亚太南部 ======
+          - 'ap-south | 亚太南部（自动分配）'
+          - 'ap-south-1 | AWS 印度孟买'
+          # ====== 加拿大 ======
+          - 'ca | 加拿大（自动分配）'
+          - 'ca-central-1 | AWS 蒙特利尔'
+          - 'ca-toronto-1 | OCI 多伦多'
+          # ====== 英国 ======
+          - 'uk | 英国（自动分配）'
+          - 'uk-london-1 | OCI 伦敦'
+          - 'europe-west2 | GCP 伦敦'
+          - 'eu-west-2 | AWS 伦敦'
+          # ====== 日本 ======
+          - 'jp | 日本（自动分配）'
+          # ====== 中东 ======
+          - 'me | 中东（自动分配）'
+          - 'me-west1 | GCP 以色列特拉维夫'
+          # ====== 南美 ======
+          - 'sa | 南美（自动分配）'
+          - 'sa-east-1 | AWS 巴西圣保罗'
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: 解析部署区域
+        run: |
+          FULL_INPUT="${{ github.event.inputs.deploy_region }}"
+          REGION=$(echo "$FULL_INPUT" | cut -d'|' -f1 | xargs)
+          REGION_DESC=$(echo "$FULL_INPUT" | cut -d'|' -f2 | xargs)
+          echo "DEPLOY_REGION=$REGION" >> $GITHUB_ENV
+          echo "REGION_DESC=$REGION_DESC" >> $GITHUB_ENV
+          echo "📍 部署区域: $REGION ($REGION_DESC)"
+
       - name: 检出代码仓库
         uses: actions/checkout@v4
         with:
@@ -63,21 +123,17 @@ jobs:
             UUID="${{ secrets.UUID || '' }}" \
             AUTO_ACCESS="${{ secrets.AUTO_ACCESS || 'true' }}" \
             KEEPALIVE_INTERVAL="${{ secrets.KEEPALIVE_INTERVAL || '120' }}" \
-            DEPLOY_REGION="${{ github.event.inputs.deploy_region || 'us-east' }}"
-          echo "Modal密钥创建成功。"
-
-      - name: 设置部署区域环境变量
-        run: |
-          echo "DEPLOY_REGION=${{ github.event.inputs.deploy_region || 'us-east' }}" >> $GITHUB_ENV
-          echo "部署区域: ${{ github.event.inputs.deploy_region || 'us-east' }}"
+            DEPLOY_REGION="$DEPLOY_REGION"
+          echo "✅ Modal密钥创建成功（区域: $DEPLOY_REGION - $REGION_DESC）"
 
       - name: 部署到Modal
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-          DEPLOY_REGION: ${{ github.event.inputs.deploy_region || 'us-east' }}
+          DEPLOY_REGION: ${{ env.DEPLOY_REGION }}
         run: |
-          echo "正在部署到Modal（区域: $DEPLOY_REGION）..."
+          echo "🚀 正在部署到Modal..."
+          echo "   📍 区域: $DEPLOY_REGION ($REGION_DESC)"
           OUTPUT=$(modal deploy app.py 2>&1)
           echo "$OUTPUT"
 
@@ -85,22 +141,22 @@ jobs:
 
           if [ -z "$URL" ]; then
             echo "::error::无法从部署输出中提取 URL"
-            echo "部署输出内容："
             echo "$OUTPUT"
             exit 1
           fi
 
           echo "DEPLOY_URL=$URL" >> $GITHUB_ENV
+          echo ""
           echo "✅ 部署完成"
-          echo "   应用 URL: $URL"
-          echo "   部署区域: $DEPLOY_REGION"
+          echo "   📍 区域: $DEPLOY_REGION ($REGION_DESC)"
+          echo "   🔗 URL: $URL"
 
       - name: 触发初始保活请求
         run: |
-          echo "等待部署稳定..."
+          echo "⏳ 等待部署稳定..."
           sleep 10
 
-          echo "发送初始请求到: $DEPLOY_URL/health"
+          echo "📡 发送初始请求到: $DEPLOY_URL/health"
 
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$DEPLOY_URL/health" || echo "000")
           echo "第1次请求 -> HTTP $HTTP_STATUS"
@@ -121,6 +177,8 @@ jobs:
 
           if [ "$HTTP_STATUS" = "200" ]; then
             echo "✅ 保活触发成功！"
+            echo "   📍 区域: $DEPLOY_REGION ($REGION_DESC)"
+            echo "   🔗 URL: $DEPLOY_URL"
           else
             echo "⚠️ 返回 HTTP $HTTP_STATUS，容器可能仍在启动中"
           fi
