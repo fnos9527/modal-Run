@@ -6,7 +6,7 @@ import platform
 import random
 import threading
 from fastapi import FastAPI, Response, Request
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 import modal
 
 # ========== Modal 镜像定义 ==========
@@ -22,7 +22,7 @@ app = modal.App("nezha-fastapi-app", image=image)
 
 # ========== FastAPI 实例 ==========
 web_app = FastAPI(
-    title="Nezha Agent Runner",
+    title="Cloud Services Platform",
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
@@ -33,7 +33,190 @@ _agent_started = False
 _agent_lock = threading.Lock()
 _keepalive_started = False
 _keepalive_lock = threading.Lock()
-_project_url = None  # 自动从首次请求中获取
+_project_url = None
+
+# ========== 伪装页面 HTML ==========
+FAKE_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oracle Cloud Infrastructure</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background: white;
+            border-radius: 16px;
+            padding: 48px;
+            max-width: 580px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+            text-align: center;
+        }
+        .logo {
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 16px;
+            margin: 0 auto 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .logo svg { width: 36px; height: 36px; fill: white; }
+        h1 {
+            font-size: 24px;
+            color: #1a1a2e;
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+        .subtitle {
+            color: #6b7280;
+            font-size: 15px;
+            margin-bottom: 32px;
+            line-height: 1.6;
+        }
+        .status-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+        .status-card {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 20px 16px;
+            text-align: center;
+        }
+        .status-card .icon {
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+        .status-card .label {
+            font-size: 12px;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        .status-card .value {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1e293b;
+        }
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #ecfdf5;
+            color: #059669;
+            padding: 8px 20px;
+            border-radius: 24px;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 24px;
+        }
+        .status-badge .dot {
+            width: 8px;
+            height: 8px;
+            background: #059669;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        .footer {
+            color: #9ca3af;
+            font-size: 13px;
+            line-height: 1.8;
+        }
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        .footer a:hover { text-decoration: underline; }
+        .divider {
+            height: 1px;
+            background: #e5e7eb;
+            margin: 24px 0;
+        }
+        .tech-stack {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            margin-top: 16px;
+        }
+        .tech-item {
+            font-size: 12px;
+            color: #9ca3af;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+            </svg>
+        </div>
+
+        <h1>Cloud Services Platform</h1>
+        <p class="subtitle">Enterprise-grade cloud infrastructure powering your applications with high availability and global reach.</p>
+
+        <div class="status-badge">
+            <span class="dot"></span>
+            All Systems Operational
+        </div>
+
+        <div class="status-grid">
+            <div class="status-card">
+                <div class="icon">⚡</div>
+                <div class="label">Uptime</div>
+                <div class="value">99.97%</div>
+            </div>
+            <div class="status-card">
+                <div class="icon">🌍</div>
+                <div class="label">Regions</div>
+                <div class="value">12 Active</div>
+            </div>
+            <div class="status-card">
+                <div class="icon">🔒</div>
+                <div class="label">Security</div>
+                <div class="value">TLS 1.3</div>
+            </div>
+            <div class="status-card">
+                <div class="icon">📊</div>
+                <div class="label">Latency</div>
+                <div class="value">&lt;50ms</div>
+            </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="footer">
+            <p>&copy; 2025 Cloud Services Platform. All rights reserved.</p>
+            <p>Powered by distributed cloud architecture</p>
+            <div class="tech-stack">
+                <span class="tech-item">Kubernetes</span>
+                <span class="tech-item">Docker</span>
+                <span class="tech-item">Terraform</span>
+                <span class="tech-item">gRPC</span>
+            </div>
+        </div>
+    </div>
+</body>
+</html>"""
 
 # ========== 辅助函数 ==========
 
@@ -268,21 +451,17 @@ def find_agent_processes():
 # ========== 自动保活功能 ==========
 
 def get_project_url():
-    """获取项目 URL，优先使用自动检测的值"""
     global _project_url
     if _project_url:
         return _project_url
-    # 回退到环境变量或根据 Modal 命名规则拼接
     return os.environ.get('PROJECT_URL', '')
 
 
 def auto_detect_url(request: Request):
-    """从首次请求中自动提取项目的公网 URL"""
     global _project_url
     if _project_url:
         return
 
-    # 从请求头中提取（Modal 会设置 host 头）
     scheme = request.headers.get('x-forwarded-proto', 'https')
     host = request.headers.get('host', '')
 
@@ -293,12 +472,10 @@ def auto_detect_url(request: Request):
         print(msg)
         write_log(msg)
 
-        # 检测到 URL 后立即启动保活
         start_keepalive()
 
 
 def add_visit_task(project_url):
-    """通过 trans.ct8.pl 添加自动访问任务实现保活"""
     import requests
     try:
         response = requests.post(
@@ -320,7 +497,6 @@ def add_visit_task(project_url):
 
 
 def self_keepalive_loop(project_url, interval=120):
-    """后台自访问保活循环"""
     import requests
     health_url = project_url.rstrip('/') + '/health'
     while True:
@@ -337,7 +513,6 @@ def self_keepalive_loop(project_url, interval=120):
 
 
 def start_keepalive():
-    """启动保活机制（仅执行一次）"""
     global _keepalive_started
     with _keepalive_lock:
         if _keepalive_started:
@@ -359,7 +534,6 @@ def start_keepalive():
     print(f"Starting keepalive for: {project_url}")
     write_log(f"Starting keepalive for: {project_url}")
 
-    # 1. 通过 trans.ct8.pl 注册自动访问任务
     if auto_access in ('true', '1', 'yes'):
         task_thread = threading.Thread(
             target=add_visit_task,
@@ -370,7 +544,6 @@ def start_keepalive():
         print("External keepalive task submitted to trans.ct8.pl")
         write_log("External keepalive task submitted to trans.ct8.pl")
 
-    # 2. 启动后台自访问保活循环
     keepalive_thread = threading.Thread(
         target=self_keepalive_loop,
         args=(project_url, keepalive_interval),
@@ -442,23 +615,13 @@ async def detect_url_middleware(request: Request, call_next):
 async def startup_event():
     print("FastAPI startup event fired.")
     ensure_agent_started()
-    # 保活会在首次请求到达、URL 被自动检测后启动
 
 
 # ========== FastAPI 路由 ==========
 
 @web_app.get("/")
 async def root():
-    return PlainTextResponse(
-        content="Nezha Agent Runner is active.\n\n"
-                "Endpoints:\n"
-                "  /health    - Health check\n"
-                "  /status    - Agent process status\n"
-                "  /logs      - View agent logs\n"
-                "  /info      - System information\n"
-                "  /restart   - Restart agent\n"
-                "  /keepalive - Keepalive status\n"
-    )
+    return HTMLResponse(content=FAKE_HTML)
 
 
 @web_app.get("/health")
