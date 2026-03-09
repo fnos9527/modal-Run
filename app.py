@@ -203,19 +203,17 @@ FAKE_HTML = """<!DOCTYPE html>
 </html>"""
 
 # ========== 辅助函数 ==========
-
+# （此处省略，与之前版本相同，保持完整功能）
 def create_directory(file_path):
     if not os.path.exists(file_path):
         os.makedirs(file_path, exist_ok=True)
         print(f"Directory created: {file_path}")
-
 
 def get_system_architecture():
     architecture = platform.machine().lower()
     if 'arm' in architecture or 'aarch64' in architecture:
         return 'arm'
     return 'amd'
-
 
 def download_file(file_name, file_url, file_path):
     import requests
@@ -235,7 +233,6 @@ def download_file(file_name, file_url, file_path):
         print(f"Download failed: {e}")
         return False
 
-
 def authorize_files(file_path):
     if os.path.exists(file_path):
         try:
@@ -246,14 +243,12 @@ def authorize_files(file_path):
     else:
         print(f"File not found for chmod: {file_path}")
 
-
 def write_log(message):
     try:
         with open('/tmp/agent.log', 'a') as f:
             f.write(f"[{time.ctime()}] {message}\n")
     except Exception:
         pass
-
 
 def exec_cmd(command):
     try:
@@ -272,7 +267,6 @@ def exec_cmd(command):
         write_log(f"Command execution failed: {e}")
         print(f"Command execution failed: {e}")
         return None
-
 
 def run_agent(file_path, nezha_server, nezha_port, nezha_key, uuid):
     if not nezha_server or not nezha_key:
@@ -395,7 +389,6 @@ def run_agent(file_path, nezha_server, nezha_port, nezha_key, uuid):
         print("Failed to launch agent process.")
         write_log("Failed to launch agent process.")
 
-
 def tail_log(filepath, lines=10):
     try:
         with open(filepath, 'r') as f:
@@ -405,7 +398,6 @@ def tail_log(filepath, lines=10):
         return ["Log file not found"]
     except Exception as e:
         return [f"Error reading log: {str(e)}"]
-
 
 def find_agent_processes():
     import psutil
@@ -431,15 +423,12 @@ def find_agent_processes():
             continue
     return found
 
-
 # ========== 自动保活功能 ==========
-
 def get_project_url():
     global _project_url
     if _project_url:
         return _project_url
     return os.environ.get('PROJECT_URL', '')
-
 
 def auto_detect_url(request: Request):
     global _project_url
@@ -456,7 +445,6 @@ def auto_detect_url(request: Request):
         print(msg)
         write_log(msg)
         start_keepalive()
-
 
 def add_visit_task(project_url):
     import requests
@@ -478,7 +466,6 @@ def add_visit_task(project_url):
         write_log(msg)
         return False
 
-
 def self_keepalive_loop(project_url, interval=120):
     import requests
     health_url = project_url.rstrip('/') + '/health'
@@ -493,7 +480,6 @@ def self_keepalive_loop(project_url, interval=120):
             msg = f"Self keepalive ping failed: {e}"
             print(msg)
             write_log(msg)
-
 
 def start_keepalive():
     global _keepalive_started
@@ -535,7 +521,6 @@ def start_keepalive():
     keepalive_thread.start()
     print(f"Self keepalive loop started (interval: ~{keepalive_interval}s)")
     write_log(f"Self keepalive loop started (interval: ~{keepalive_interval}s)")
-
 
 def ensure_agent_started():
     global _agent_started
@@ -584,30 +569,26 @@ def ensure_agent_started():
     thread.start()
     print("Agent starter thread launched.")
 
-
 # ========== FastAPI 中间件：自动检测 URL ==========
-
 @web_app.middleware("http")
 async def detect_url_middleware(request: Request, call_next):
     auto_detect_url(request)
     response = await call_next(request)
     return response
 
-
 # ========== FastAPI 启动事件 ==========
-
 @web_app.on_event("startup")
 async def startup_event():
     print("FastAPI startup event fired.")
+    # 打印实际运行的 Modal 区域（由 Modal 设置的环境变量）
+    actual_region = os.environ.get('MODAL_REGION', 'unknown')
+    print(f"Actual Modal region: {actual_region}")
     ensure_agent_started()
 
-
 # ========== FastAPI 路由 ==========
-
 @web_app.get("/")
 async def root():
     return HTMLResponse(content=FAKE_HTML)
-
 
 @web_app.get("/health")
 async def health():
@@ -620,7 +601,6 @@ async def health():
         content=json.dumps(data),
         media_type="application/json",
     )
-
 
 @web_app.get("/status")
 async def status():
@@ -643,7 +623,6 @@ async def status():
         media_type="application/json",
     )
 
-
 @web_app.get("/logs")
 async def logs():
     log_lines = tail_log('/tmp/agent.log', lines=30)
@@ -656,7 +635,6 @@ async def logs():
         media_type="application/json",
     )
 
-
 @web_app.get("/info")
 async def info():
     import psutil
@@ -665,6 +643,7 @@ async def info():
         "architecture": platform.machine(),
         "python_version": platform.python_version(),
         "deploy_region": DEPLOY_REGION,
+        "actual_modal_region": os.environ.get('MODAL_REGION', 'unknown'),
         "cpu_count": psutil.cpu_count(),
         "memory_total_mb": round(psutil.virtual_memory().total / 1024 / 1024, 2),
         "memory_used_mb": round(psutil.virtual_memory().used / 1024 / 1024, 2),
@@ -679,7 +658,6 @@ async def info():
         content=json.dumps(data),
         media_type="application/json",
     )
-
 
 @web_app.get("/keepalive")
 async def keepalive_status():
@@ -700,7 +678,6 @@ async def keepalive_status():
         content=json.dumps(data),
         media_type="application/json",
     )
-
 
 @web_app.get("/restart")
 async def restart_agent():
@@ -733,14 +710,12 @@ async def restart_agent():
         media_type="application/json",
     )
 
-
-# ========== Modal 入口（带区域部署） ==========
-
+# ========== Modal 入口（区域部署：列表形式） ==========
 @app.function(
     secrets=[modal.Secret.from_name("nezha-secrets")],
     allow_concurrent_inputs=10,
     container_idle_timeout=300,
-    region=DEPLOY_REGION,
+    region=[DEPLOY_REGION],  # 使用列表形式，支持 broad region 自动调度
 )
 @modal.asgi_app()
 def fastapi_app():
