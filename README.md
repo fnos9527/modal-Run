@@ -201,7 +201,7 @@
 </details>
 
 <details>
-<summary><b>🇯🇵 亚太东北 AP-NORTHEAST（10 个区域）</b></summary>
+<summary><b>🇨🇳 亚太东北 AP-NORTHEAST（10 个区域）</b></summary>
 
 | 选择值 | 位置 |
 | :--- | :--- |
