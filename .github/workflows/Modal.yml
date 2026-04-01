@@ -169,6 +169,10 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+      
     steps:
       - name: 解析部署区域
         run: |
@@ -327,8 +331,7 @@ jobs:
             echo "⚠️ 返回 HTTP $HTTP_STATUS，容器可能仍在启动中"
           fi
 
-      - name: 清理旧运行
-        if: always()
+      - name: 清理历史运行记录
         uses: Mattraks/delete-workflow-runs@v2
         with:
           token: ${{ github.token }}
