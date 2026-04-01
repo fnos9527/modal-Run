@@ -1,4 +1,4 @@
-```markdown
+
 # Modal 哪吒探针部署 🚀
 
 > ⭐ 觉得有用？点个 **Star** 支持一下！⭐
@@ -340,7 +340,7 @@ curl -X POST \
 
 ```bash
 curl -X POST \
-  https://api.github.com/repos/oyz6/action/actions/workflows/Modal.yml/dispatches \
+  https://api.github.com/repos/oyz8/action/actions/workflows/Modal.yml/dispatches \
   -H "Accept: application/vnd.github.v3+json" \
   -H "Authorization: token ghp_UBXXXXXXXXXf" \
   -d '{"ref":"main","inputs":{}}'
@@ -355,7 +355,7 @@ curl -X POST \
 
 ```bash
 curl -X POST \
-  https://api.github.com/repos/oyz6/action/actions/workflows/Modal.yml/dispatches \
+  https://api.github.com/repos/oyz8/action/actions/workflows/Modal.yml/dispatches \
   -H "Accept: application/vnd.github.v3+json" \
   -H "Authorization: token ghp_UBXXXXXXXXXf" \
   -d '{
@@ -373,7 +373,7 @@ curl -X POST \
 
 ```bash
 curl -X POST \
-  https://api.github.com/repos/oyz6/action/actions/workflows/Modal.yml/dispatches \
+  https://api.github.com/repos/oyz8/action/actions/workflows/Modal.yml/dispatches \
   -H "Accept: application/vnd.github.v3+json" \
   -H "Authorization: token ghp_UBXXXXXXXXXf" \
   -d '{
@@ -397,7 +397,7 @@ curl -X POST \
 
 ```bash
 curl -X POST \
-  https://api.github.com/repos/oyz6/action/actions/workflows/Modal.yml/dispatches \
+  https://api.github.com/repos/oyz8/action/actions/workflows/Modal.yml/dispatches \
   -H "Accept: application/vnd.github.v3+json" \
   -H "Authorization: token ghp_UBXXXXXXXXXf" \
   -d '{
@@ -420,7 +420,7 @@ curl -X POST \
 
 ```bash
 curl -X POST \
-  https://api.github.com/repos/oyz6/action/actions/workflows/Modal.yml/dispatches \
+  https://api.github.com/repos/oyz8/action/actions/workflows/Modal.yml/dispatches \
   -H "Accept: application/vnd.github.v3+json" \
   -H "Authorization: token ghp_UBXXXXXXXXXf" \
   -d '{
@@ -443,7 +443,7 @@ curl -X POST \
 ```bash
 # 账号 A → 部署到东京
 curl -X POST \
-  https://api.github.com/repos/oyz6/action/actions/workflows/Modal.yml/dispatches \
+  https://api.github.com/repos/oyz8/action/actions/workflows/Modal.yml/dispatches \
   -H "Accept: application/vnd.github.v3+json" \
   -H "Authorization: token ghp_UBXXXXXXXXXf" \
   -d '{
@@ -460,7 +460,7 @@ curl -X POST \
 
 # 账号 B → 部署到法兰克福
 curl -X POST \
-  https://api.github.com/repos/oyz6/action/actions/workflows/Modal.yml/dispatches \
+  https://api.github.com/repos/oyz8/action/actions/workflows/Modal.yml/dispatches \
   -H "Accept: application/vnd.github.v3+json" \
   -H "Authorization: token ghp_UBXXXXXXXXXf" \
   -d '{
@@ -495,15 +495,14 @@ curl -X POST \
 ## ⚠️ 注意事项
 
 1. **区域值格式**：
-   ​```
-   ✅ "ap-northeast-1"               ← API 调用推荐
-   ✅ "ap-northeast-1 | AWS 东京"    ← 完整格式也支持
-   ❌ "东京"                          ← 不支持中文名称
-   ​```
 
-2. **敏感信息安全**：通过 API `inputs` 传递的 token/key 可能出现在 Actions 日志中。生产环境建议优先使用 Secret，API 输入仅用于临时覆盖或测试。
+- ✅ "ap-northeast-1"               ← API 调用推荐
+- ✅ "ap-northeast-1 | AWS 东京"    ← 完整格式也支持
+- ❌ "东京"                          ← 不支持中文名称
 
-3. **空值处理**：`inputs` 中传空字符串 `""` 等同于未传，会自动回退到 Secret。
 
-4. **未传字段**：API 调用中未包含的 `inputs` 字段将使用工作流定义的默认值（空字符串），同样回退到 Secret。
-```
+3. **敏感信息安全**：通过 API `inputs` 传递的 token/key 可能出现在 Actions 日志中。生产环境建议优先使用 Secret，API 输入仅用于临时覆盖或测试。
+
+4. **空值处理**：`inputs` 中传空字符串 `""` 等同于未传，会自动回退到 Secret。
+
+5. **未传字段**：API 调用中未包含的 `inputs` 字段将使用工作流定义的默认值（空字符串），同样回退到 Secret。
