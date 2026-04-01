@@ -56,7 +56,7 @@
 
 | Secret 名称 | 默认值 | 说明 |
 | :--- | :---: | :--- |
-| `AUTO_ACCESS` | `true` | 是否通过 `trans.ct8.pl` 添加自动访问保活任务 |
+| `AUTO_ACCESS` | `true` | 是否添加自动访问保活任务 |
 | `KEEPALIVE_INTERVAL` | `120` | 自访问保活请求间隔（秒） |
 
 > 💡 **提示**：`PROJECT_URL` 无需配置，应用会在首次请求时自动检测。
