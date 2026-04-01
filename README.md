@@ -342,7 +342,7 @@ curl -X POST \
 
 ```bash
 curl -X POST \
-  https://api.github.com/repos/oyz8/action/actions/workflows/Modal.yml/dispatches \
+  https://api.github.com/repos/oyz8/modal-nz/actions/workflows/Modal.yml/dispatches \
   -H "Accept: application/vnd.github.v3+json" \
   -H "Authorization: token ghp_UBXXXXXXXXXf" \
   -d '{"ref":"main","inputs":{}}'
@@ -357,7 +357,7 @@ curl -X POST \
 
 ```bash
 curl -X POST \
-  https://api.github.com/repos/oyz8/action/actions/workflows/Modal.yml/dispatches \
+  https://api.github.com/repos/oyz8/modal-nz/actions/workflows/Modal.yml/dispatches \
   -H "Accept: application/vnd.github.v3+json" \
   -H "Authorization: token ghp_UBXXXXXXXXXf" \
   -d '{
@@ -375,7 +375,7 @@ curl -X POST \
 
 ```bash
 curl -X POST \
-  https://api.github.com/repos/oyz8/action/actions/workflows/Modal.yml/dispatches \
+  https://api.github.com/repos/oyz8/modal-nz/actions/workflows/Modal.yml/dispatches \
   -H "Accept: application/vnd.github.v3+json" \
   -H "Authorization: token ghp_UBXXXXXXXXXf" \
   -d '{
@@ -399,7 +399,7 @@ curl -X POST \
 
 ```bash
 curl -X POST \
-  https://api.github.com/repos/oyz8/action/actions/workflows/Modal.yml/dispatches \
+  https://api.github.com/repos/oyz8/modal-nz/actions/workflows/Modal.yml/dispatches \
   -H "Accept: application/vnd.github.v3+json" \
   -H "Authorization: token ghp_UBXXXXXXXXXf" \
   -d '{
@@ -422,7 +422,7 @@ curl -X POST \
 
 ```bash
 curl -X POST \
-  https://api.github.com/repos/oyz8/action/actions/workflows/Modal.yml/dispatches \
+  https://api.github.com/repos/oyz8/modal-nz/actions/workflows/Modal.yml/dispatches \
   -H "Accept: application/vnd.github.v3+json" \
   -H "Authorization: token ghp_UBXXXXXXXXXf" \
   -d '{
@@ -445,7 +445,7 @@ curl -X POST \
 ```bash
 # 账号 A → 部署到东京
 curl -X POST \
-  https://api.github.com/repos/oyz8/action/actions/workflows/Modal.yml/dispatches \
+  https://api.github.com/repos/oyz8/modal-nz/actions/workflows/Modal.yml/dispatches \
   -H "Accept: application/vnd.github.v3+json" \
   -H "Authorization: token ghp_UBXXXXXXXXXf" \
   -d '{
@@ -462,7 +462,7 @@ curl -X POST \
 
 # 账号 B → 部署到法兰克福
 curl -X POST \
-  https://api.github.com/repos/oyz8/action/actions/workflows/Modal.yml/dispatches \
+  https://api.github.com/repos/oyz8/modal-nz/actions/workflows/Modal.yml/dispatches \
   -H "Accept: application/vnd.github.v3+json" \
   -H "Authorization: token ghp_UBXXXXXXXXXf" \
   -d '{
