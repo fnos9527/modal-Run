@@ -173,15 +173,25 @@ jobs:
       - name: 解析部署区域
         run: |
           FULL_INPUT="${{ github.event.inputs.deploy_region }}"
-          REGION=$(echo "$FULL_INPUT" | cut -d'|' -f1 | xargs)
-          REGION_DESC=$(echo "$FULL_INPUT" | cut -d'|' -f2 | xargs)
+
+          # 兼容两种格式：
+          #   界面选择: "ap-northeast-1 | AWS 东京"
+          #   API 调用: "ap-northeast-1"
+          if echo "$FULL_INPUT" | grep -q '|'; then
+            REGION=$(echo "$FULL_INPUT" | cut -d'|' -f1 | xargs)
+            REGION_DESC=$(echo "$FULL_INPUT" | cut -d'|' -f2 | xargs)
+          else
+            REGION=$(echo "$FULL_INPUT" | xargs)
+            REGION_DESC="API 直传"
+          fi
+
           echo "DEPLOY_REGION=$REGION" >> $GITHUB_ENV
           echo "REGION_DESC=$REGION_DESC" >> $GITHUB_ENV
           echo "📍 部署区域: $REGION ($REGION_DESC)"
 
       - name: 解析变量（工作流输入优先，Secret 兜底）
         run: |
-          # Modal 令牌ID：工作流输入优先，否则使用 Secret
+          # Modal 令牌ID
           if [ -n "${{ github.event.inputs.modal_token_id }}" ]; then
             echo "RESOLVED_MODAL_TOKEN_ID=${{ github.event.inputs.modal_token_id }}" >> $GITHUB_ENV
             echo "✅ MODAL_TOKEN_ID: 使用工作流输入"
@@ -190,7 +200,7 @@ jobs:
             echo "✅ MODAL_TOKEN_ID: 使用 Secret"
           fi
 
-          # Modal 令牌密钥：工作流输入优先，否则使用 Secret
+          # Modal 令牌密钥
           if [ -n "${{ github.event.inputs.modal_token_secret }}" ]; then
             echo "RESOLVED_MODAL_TOKEN_SECRET=${{ github.event.inputs.modal_token_secret }}" >> $GITHUB_ENV
             echo "✅ MODAL_TOKEN_SECRET: 使用工作流输入"
@@ -199,7 +209,7 @@ jobs:
             echo "✅ MODAL_TOKEN_SECRET: 使用 Secret"
           fi
 
-          # 哪吒服务器地址：工作流输入优先，否则使用 Secret
+          # 哪吒服务器地址
           if [ -n "${{ github.event.inputs.nezha_server }}" ]; then
             echo "RESOLVED_NEZHA_SERVER=${{ github.event.inputs.nezha_server }}" >> $GITHUB_ENV
             echo "✅ NEZHA_SERVER: 使用工作流输入"
@@ -208,7 +218,7 @@ jobs:
             echo "✅ NEZHA_SERVER: 使用 Secret"
           fi
 
-          # 哪吒密钥：工作流输入优先，否则使用 Secret
+          # 哪吒密钥
           if [ -n "${{ github.event.inputs.nezha_key }}" ]; then
             echo "RESOLVED_NEZHA_KEY=${{ github.event.inputs.nezha_key }}" >> $GITHUB_ENV
             echo "✅ NEZHA_KEY: 使用工作流输入"
@@ -217,7 +227,7 @@ jobs:
             echo "✅ NEZHA_KEY: 使用 Secret"
           fi
 
-          # UUID：工作流输入优先，否则使用 Secret
+          # UUID
           if [ -n "${{ github.event.inputs.uuid }}" ]; then
             echo "RESOLVED_UUID=${{ github.event.inputs.uuid }}" >> $GITHUB_ENV
             echo "✅ UUID: 使用工作流输入"
@@ -226,7 +236,7 @@ jobs:
             echo "✅ UUID: 使用 Secret"
           fi
 
-          # 哪吒端口：工作流输入优先，否则使用 Secret
+          # 哪吒端口
           if [ -n "${{ github.event.inputs.nezha_port }}" ]; then
             echo "RESOLVED_NEZHA_PORT=${{ github.event.inputs.nezha_port }}" >> $GITHUB_ENV
             echo "✅ NEZHA_PORT: 使用工作流输入"
@@ -238,7 +248,7 @@ jobs:
       - name: 检出代码仓库
         uses: actions/checkout@v4
         with:
-          ref: main  # 分支
+          ref: main
 
       - name: 设置Python环境
         uses: actions/setup-python@v5
@@ -272,7 +282,7 @@ jobs:
         id: deploy
         run: |
           echo "🚀 正在部署到Modal..."
-          echo "   📍 区域: $DEPLOY_REGION ($REGION_DESC) (通过环境变量传递)"
+          echo "   📍 区域: $DEPLOY_REGION ($REGION_DESC)"
           OUTPUT=$(modal deploy app.py 2>&1)
           echo "$OUTPUT"
 
