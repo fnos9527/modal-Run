@@ -7,42 +7,46 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 import modal
 
-# 1. 定义镜像
 image = modal.Image.debian_slim().pip_install("fastapi", "requests")
-
-# 2. 创建 App
 app = modal.App("komari-app", image=image)
 web_app = FastAPI()
 
-# 写入日志的函数
 def write_log(msg):
     with open('/tmp/agent.log', 'a') as f:
         f.write(f"[{time.ctime()}] {msg}\n")
 
-# 启动 Agent 的函数
 def run_agent():
-    # 从环境变量读取（这些变量必须由 Secret 提供）
     server = os.environ.get('KOMARI_SERVER', '')
     key = os.environ.get('KOMARI_KEY', '')
     
     if not server or not key:
-        write_log(f"Error: Server({server}) or Key is empty!")
+        write_log("Error: Variables missing!")
         return
+
+    # 清除残留进程
+    subprocess.run("pkill -9 agent", shell=True)
 
     arch = 'arm64' if 'arm' in platform.machine().lower() else 'amd64'
     url = f"https://github.com/komari-monitor/komari/releases/latest/download/komari-linux-{arch}"
     
     try:
         import requests
-        write_log("Downloading agent...")
-        r = requests.get(url)
+        write_log(f"Downloading agent to {arch}...")
+        r = requests.get(url, timeout=10)
         with open("/tmp/agent", "wb") as f:
             f.write(r.content)
         os.chmod("/tmp/agent", 0o755)
         
-        # 启动
-        subprocess.Popen(f"nohup /tmp/agent -s {server} -k {key} >/dev/null 2>&1 &", shell=True)
-        write_log("Agent started successfully!")
+        # --- 核心改进：把所有输出重定向到 /tmp/exec.log ---
+        write_log(f"Starting agent connecting to {server}...")
+        with open('/tmp/exec.log', 'w') as log_file:
+            subprocess.Popen(
+                ["/tmp/agent", "-s", server, "-k", key],
+                stdout=log_file,
+                stderr=log_file,
+                preexec_fn=os.setsid
+            )
+        write_log("Process launched. Check /logs for connection status.")
     except Exception as e:
         write_log(f"Failed: {str(e)}")
 
@@ -52,15 +56,20 @@ async def startup():
 
 @web_app.get("/")
 async def index():
-    return HTMLResponse("<h1>Running</h1>")
+    return HTMLResponse("<h1>Node Online</h1>")
 
+# 这个接口会展示具体的连接报错
 @web_app.get("/logs")
 async def logs():
+    data = {"setup": [], "connection_error": []}
     if os.path.exists('/tmp/agent.log'):
-        return {"logs": open('/tmp/agent.log').readlines()}
-    return {"msg": "No logs yet"}
+        with open('/tmp/agent.log', 'r') as f:
+            data["setup"] = f.readlines()
+    if os.path.exists('/tmp/exec.log'):
+        with open('/tmp/exec.log', 'r') as f:
+            data["connection_error"] = f.readlines()
+    return data
 
-# 3. 核心部署入口：必须指定 secrets 名字！！！
 @app.function(
     secrets=[modal.Secret.from_name("komari-secrets")],
     region=[os.environ.get('DEPLOY_REGION', 'us-east')],
