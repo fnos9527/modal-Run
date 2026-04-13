@@ -19,11 +19,11 @@ def write_log(msg):
         f.write(f"[{time.ctime()}] {msg}\n")
 
 def run_agent():
-    # 自动处理地址：Cloudflare 隧道必须走 HTTPS (443)
+    # 处理地址：Cloudflare 隧道必须走 HTTPS (443)
     raw_server = os.environ.get('KOMARI_SERVER', '')
     server_host = raw_server.replace('https://', '').replace('http://', '').split(':')[0]
     
-    # 强制指定 443 端口，因为 Cloudflare 隧道基于 HTTPS
+    # 强制指定 443 端口，确保穿透 Cloudflare
     server = f"{server_host}:443"
     key = os.environ.get('KOMARI_KEY', '')
     
@@ -32,32 +32,36 @@ def run_agent():
         return
 
     # 清理旧进程
-    subprocess.run("pkill -9 agent", shell=True)
+    subprocess.run("pkill -9 komari-agent", shell=True)
 
-    arch = 'arm64' if 'arm' in platform.machine().lower() else 'amd64'
-    url = f"https://github.com/komari-monitor/komari/releases/latest/download/komari-linux-{arch}"
+    # 3. 根据架构选择下载地址（使用你提供的最新 Agent 链接）
+    arch = platform.machine().lower()
+    if 'arm' in arch or 'aarch64' in arch:
+        url = "https://github.com/komari-monitor/komari-agent/releases/download/1.1.93/komari-agent-linux-arm64"
+    else:
+        url = "https://github.com/komari-monitor/komari-agent/releases/download/1.1.93/komari-agent-linux-amd64"
+    
+    path = "/tmp/komari-agent"
     
     try:
         import requests
-        write_log(f"Downloading agent...")
+        write_log(f"Downloading REAL Agent from: {url}")
         r = requests.get(url, timeout=15)
-        with open("/tmp/agent", "wb") as f:
+        with open(path, "wb") as f:
             f.write(r.content)
-        os.chmod("/tmp/agent", 0o755)
+        os.chmod(path, 0o755)
         
-        # --- 核心修正：使用正确的新版命令参数 ---
-        # 1. 使用 'agent' 子命令
-        # 2. 使用 --server 和 --key 全称
-        # 3. 增加 --tls (Cloudflare 必须加密)
-        write_log(f"Connecting to {server} via Cloudflare Tunnel...")
+        # --- 核心修正：使用专用 Agent 的启动命令 ---
+        # 专用客户端通常使用 -s 和 -k，且 Cloudflare 必须带 --tls
+        write_log(f"Connecting to {server} via Cloudflare...")
         with open('/tmp/exec.log', 'w') as log_file:
             subprocess.Popen(
-                ["/tmp/agent", "agent", "--server", server, "--key", key, "--tls"],
+                [path, "-s", server, "-k", key, "--tls"],
                 stdout=log_file,
                 stderr=log_file,
                 preexec_fn=os.setsid
             )
-        write_log("Agent launched with correct command. Checking connection...")
+        write_log("Real Agent launched successfully!")
     except Exception as e:
         write_log(f"Failed: {str(e)}")
 
@@ -67,7 +71,7 @@ async def startup():
 
 @web_app.get("/")
 async def index():
-    return HTMLResponse("<h1>System Status: Running</h1>")
+    return HTMLResponse("<h1>Komari Agent: Running</h1>")
 
 @web_app.get("/logs")
 async def logs():
@@ -80,7 +84,7 @@ async def logs():
             data["agent_output"] = f.readlines()
     return data
 
-# 3. Modal 部署入口
+# 4. Modal 部署
 @app.function(
     secrets=[modal.Secret.from_name("komari-secrets")],
     region=[os.environ.get('DEPLOY_REGION', 'us-east')],
