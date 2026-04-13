@@ -31,13 +31,16 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
 
       - name: 变量逻辑解析
         run: |
-          # 核心逻辑：如果 inputs 为空，则取 secrets 的值
+          # 核心逻辑：如果手动输入框为空，则从仓库 Secrets 中读取值
           
           # 处理 Token ID
           if [ -n "${{ github.event.inputs.modal_token_id }}" ]; then
@@ -67,26 +70,44 @@ jobs:
             echo "K_KEY=${{ secrets.KOMARI_KEY }}" >> $GITHUB_ENV
           fi
 
-          # 处理区域
+          # 解析部署区域
           REGION=$(echo "${{ github.event.inputs.deploy_region }}" | cut -d'|' -f1 | xargs)
           echo "DEPLOY_REGION=$REGION" >> $GITHUB_ENV
 
       - name: 设置环境并部署
         run: |
-          # 检查最终变量是否依然为空
+          # 检查必要的 Token 是否存在
           if [ -z "$MID" ] || [ -z "$MSEC" ]; then
-            echo "❌ 错误：检测到 Modal Token 为空！请确保 Settings -> Secrets 中已正确添加。"
+            echo "❌ 错误：未检测到 Modal Token，请检查输入或 Secrets 设置！"
             exit 1
           fi
           
-          pip install modal
+          # 安装 Modal 客户端
+          pip install modal fastapi==0.115.12
+          
+          # 配置登录令牌
           modal token set --token-id "$MID" --token-secret "$MSEC"
           
-          # 创建保险箱
-          modal secret delete komari-secrets 2>/dev/null || true
+          # --- 自动处理 Secret 冲突 ---
+          echo "正在处理 Modal Secret..."
+          # 使用 yes y 自动回答删除确认，防止脚本卡死
+          yes y | modal secret delete komari-secrets 2>/dev/null || true
+          
+          # 创建新的 Secret 保险箱
           modal secret create komari-secrets \
             KOMARI_SERVER="$K_SRV" \
             KOMARI_KEY="$K_KEY" \
             DEPLOY_REGION="$DEPLOY_REGION"
-            
+          
+          echo "✅ Secret 配置完成，开始部署 app.py..."
+          
+          # 执行部署
           modal deploy app.py
+
+      - name: 清理运行记录
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          retain_days: 0
+          keep_minimum_runs: 1
