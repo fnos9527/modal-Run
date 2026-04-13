@@ -3,6 +3,8 @@ import time
 import subprocess
 import platform
 import threading
+import signal
+import requests
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 import modal
@@ -18,8 +20,25 @@ def write_log(msg):
     with open('/tmp/agent.log', 'a') as f:
         f.write(f"[{time.ctime()}] {msg}\n")
 
+# --- 保活逻辑：每隔 120 秒访问一次自己 ---
+def keep_alive(self_url):
+    auto_access = os.environ.get('AUTO_ACCESS', 'true').lower() == 'true'
+    interval = int(os.environ.get('KEEPALIVE_INTERVAL', 120))
+    
+    if not auto_access:
+        return
+
+    write_log(f"Keepalive task started. Interval: {interval}s")
+    while True:
+        try:
+            # 访问自己的根目录
+            requests.get(self_url, timeout=10)
+            # write_log("Keepalive ping sent.") # 如果日志太多可以注释掉这行
+        except:
+            pass
+        time.sleep(interval)
+
 def run_agent():
-    # 获取变量并自动补全协议
     raw_server = os.environ.get('KOMARI_SERVER', '')
     if not raw_server.startswith('http'):
         endpoint = f"https://{raw_server}"
@@ -29,66 +48,75 @@ def run_agent():
     token = os.environ.get('KOMARI_KEY', '')
     
     if not endpoint or not token:
-        write_log("Error: SERVER or TOKEN is missing!")
+        write_log("Error: SERVER or TOKEN missing!")
         return
 
-    # 清理可能残留的进程
-    subprocess.run("pkill -9 komari-agent", shell=True)
+    # 清理旧进程 (原生 Python 方式)
+    try:
+        curr_pid = os.getpid()
+        for pid in os.listdir('/proc'):
+            if pid.isdigit() and int(pid) != curr_pid:
+                try:
+                    with open(f'/proc/{pid}/cmdline', 'r') as f:
+                        if 'komari-agent' in f.read():
+                            os.kill(int(pid), signal.SIGKILL)
+                except: pass
+    except: pass
 
-    # 3. 下载官方指定的最新版 Agent
+    # 下载并启动 Agent
     arch = platform.machine().lower()
-    if 'arm' in arch or 'aarch64' in arch:
-        url = "https://github.com/komari-monitor/komari-agent/releases/download/1.1.93/komari-agent-linux-arm64"
-    else:
-        url = "https://github.com/komari-monitor/komari-agent/releases/download/1.1.93/komari-agent-linux-amd64"
-    
+    suffix = "arm64" if 'arm' in arch or 'aarch64' in arch else "amd64"
+    url = f"https://github.com/komari-monitor/komari-agent/releases/download/1.1.93/komari-agent-linux-{suffix}"
     path = "/tmp/komari-agent"
     
     try:
-        import requests
-        write_log(f"Downloading Agent from GitHub...")
-        r = requests.get(url, timeout=15)
-        with open(path, "wb") as f:
-            f.write(r.content)
-        os.chmod(path, 0o755)
+        if not os.path.exists(path):
+            r = requests.get(url, timeout=15)
+            with open(path, "wb") as f: f.write(r.content)
+            os.chmod(path, 0o755)
         
-        # --- 核心启动逻辑 (完全对应官方参数) ---
-        write_log(f"Starting Agent with endpoint: {endpoint}")
-        with open('/tmp/exec.log', 'w') as log_file:
-            # 模仿官方脚本的启动方式
-            subprocess.Popen(
+        write_log(f"Starting Agent...")
+        with open('/tmp/exec.log', 'a') as log_file:
+            process = subprocess.Popen(
                 [path, "-e", endpoint, "-t", token],
-                stdout=log_file,
-                stderr=log_file,
-                preexec_fn=os.setsid
+                stdout=log_file, stderr=log_file, preexec_fn=os.setsid
             )
-        write_log("Agent is now running in background.")
+            process.wait()
+            time.sleep(10)
+            run_agent() 
     except Exception as e:
-        write_log(f"Critical Failure: {str(e)}")
+        write_log(f"Error: {e}")
+        time.sleep(10)
+        run_agent()
 
 @web_app.on_event("startup")
 async def startup():
+    # 1. 启动 Agent
     threading.Thread(target=run_agent, daemon=True).start()
+    
+    # 2. 启动保活任务 (获取当前 Modal 的 URL)
+    # 这里的 URL 需要在部署后才能确定，或者手动在 Secret 填入
+    # 如果不想填，代码会尝试在第一次访问时自动获取
+    self_url = f"https://{os.environ.get('MODAL_PROJECT_NAME', 'fnosnas')}--komari-app-fastapi-app.modal.run"
+    threading.Thread(target=keep_alive, args=(self_url,), daemon=True).start()
 
 @web_app.get("/")
 async def index():
-    return HTMLResponse("<h1>Komari Agent Status: Online</h1>")
+    return HTMLResponse("<h1>Operational</h1>")
 
 @web_app.get("/logs")
 async def logs():
-    data = {"setup": [], "agent_runtime_logs": []}
+    data = {"setup": [], "agent_runtime": []}
     if os.path.exists('/tmp/agent.log'):
-        with open('/tmp/agent.log', 'r') as f:
-            data["setup"] = f.readlines()
+        with open('/tmp/agent.log', 'r') as f: data["setup"] = f.readlines()[-20:]
     if os.path.exists('/tmp/exec.log'):
-        with open('/tmp/exec.log', 'r') as f:
-            data["agent_runtime_logs"] = f.readlines()
+        with open('/tmp/exec.log', 'r') as f: data["agent_runtime"] = f.readlines()[-50:]
     return data
 
-# 4. Modal 部署入口
 @app.function(
     secrets=[modal.Secret.from_name("komari-secrets")],
     region=[os.environ.get('DEPLOY_REGION', 'us-east')],
+    container_idle_timeout=300,
 )
 @modal.asgi_app()
 def fastapi_app():
