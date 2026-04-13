@@ -19,21 +19,20 @@ def write_log(msg):
         f.write(f"[{time.ctime()}] {msg}\n")
 
 def run_agent():
-    # 自动处理服务端地址：去掉 https:// 并确保使用 443 端口
+    # 自动处理地址
     raw_server = os.environ.get('KOMARI_SERVER', '')
-    server = raw_server.replace('https://', '').replace('http://', '')
+    # 彻底去掉所有协议头和端口，由下方逻辑统一分配
+    server_host = raw_server.replace('https://', '').replace('http://', '').split(':')[0]
     
-    # 如果用户没填端口，默认补上 :443
-    if ':' not in server:
-        server = f"{server}:443"
-    
+    # 尝试不使用 TLS 的普通连接方式
+    server = f"{server_host}:80" 
     key = os.environ.get('KOMARI_KEY', '')
     
-    if not server or not key:
+    if not server_host or not key:
         write_log("Error: SERVER or KEY is empty!")
         return
 
-    # 清理可能存在的旧进程
+    # 清理旧进程
     subprocess.run("pkill -9 agent", shell=True)
 
     arch = 'arm64' if 'arm' in platform.machine().lower() else 'amd64'
@@ -41,47 +40,45 @@ def run_agent():
     
     try:
         import requests
-        write_log(f"Downloading agent for {arch}...")
+        write_log(f"Downloading agent...")
         r = requests.get(url, timeout=15)
         with open("/tmp/agent", "wb") as f:
             f.write(r.content)
         os.chmod("/tmp/agent", 0o755)
         
-        # 启动 Agent
-        # -s 指定服务器, -k 指定密钥, --tls 开启加密 (因为你是 https 域名)
-        write_log(f"Connecting to {server} with TLS...")
+        # --- 这里的改变：删掉了 --tls 参数，改走普通连接 ---
+        write_log(f"Connecting to {server} (Plain Text mode)...")
         with open('/tmp/exec.log', 'w') as log_file:
             subprocess.Popen(
-                ["/tmp/agent", "-s", server, "-k", key, "--tls"],
+                ["/tmp/agent", "-s", server, "-k", key],
                 stdout=log_file,
                 stderr=log_file,
                 preexec_fn=os.setsid
             )
-        write_log("Agent process launched with --tls.")
+        write_log("Agent launched in Plain mode. Monitoring logs...")
     except Exception as e:
         write_log(f"Failed: {str(e)}")
 
 @web_app.on_event("startup")
 async def startup():
-    # 容器启动时异步开启 Agent
     threading.Thread(target=run_agent, daemon=True).start()
 
 @web_app.get("/")
 async def index():
-    return HTMLResponse("<h1>System Operational</h1>")
+    return HTMLResponse("<h1>Status: Check Logs</h1>")
 
 @web_app.get("/logs")
 async def logs():
-    data = {"setup_status": [], "connection_error": []}
+    data = {"setup": [], "error_detail": []}
     if os.path.exists('/tmp/agent.log'):
         with open('/tmp/agent.log', 'r') as f:
-            data["setup_status"] = f.readlines()
+            data["setup"] = f.readlines()
     if os.path.exists('/tmp/exec.log'):
         with open('/tmp/exec.log', 'r') as f:
-            data["connection_error"] = f.readlines()
+            data["error_detail"] = f.readlines()
     return data
 
-# 3. Modal 部署入口
+# 3. Modal 部署
 @app.function(
     secrets=[modal.Secret.from_name("komari-secrets")],
     region=[os.environ.get('DEPLOY_REGION', 'us-east')],
