@@ -42,8 +42,8 @@
 | :--- | :--- | :--- |
 | `MODAL_TOKEN_ID` | Modal 令牌 ID，从 [Modal 仪表盘](https://modal.com/settings) 获取 | `ak-xxxxxxxxxxxxx` |
 | `MODAL_TOKEN_SECRET` | Modal 令牌密钥 | `as-xxxxxxxxxxxxx` |
-| `NEZHA_SERVER` | 哪吒服务器地址 | V1: `nezha.example.com:8008`<br>V0: `nezha.example.com` |
-| `NEZHA_KEY` | 哪吒密钥 | V1: `NZ_CLIENT_SECRET`<br>V0: Agent 密钥 |
+| `KOMARI_SERVER` | komari服务器地址 | V1: `nezha.example.com:8008`<br>V0: `nezha.example.com` |
+| `KOMARI_KEY` | komari密钥 | V1: `NZ_CLIENT_SECRET`<br>V0: Agent 密钥 |
 
 ### 按版本必填
 
