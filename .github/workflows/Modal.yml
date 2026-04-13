@@ -13,19 +13,20 @@ on:
           - 'ap-northeast-1 | AWS 东京'
           - 'asia-southeast1 | GCP 新加坡'
           - 'us-west-2 | AWS 俄勒冈州'
-          # ... 此处省略其他 80+ 区域选项，可按需保留原文件的 options [cite: 110-161]
+          - 'us-east-1 | AWS 弗吉尼亚州'
+          - 'eu-central-1 | AWS 法兰克福'
       modal_token_id:
-        description: 'Modal 令牌ID（ak-xxxxx 开头）'
+        description: 'Modal 令牌ID'
         required: false
         default: ''
         type: string
       modal_token_secret:
-        description: 'Modal 令牌密钥（as-xxxxx 开头）'
+        description: 'Modal 令牌密钥'
         required: false
         default: ''
         type: string
       komari_server:
-        description: 'Komari 服务器地址 (例如: komari.example.com)'
+        description: 'Komari 服务端地址 (例如: komari.example.com)'
         required: false
         default: ''
         type: string
@@ -38,84 +39,45 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      actions: write
     steps:
       - name: 解析部署区域
         run: |
           FULL_INPUT="${{ github.event.inputs.deploy_region }}"
-          if echo "$FULL_INPUT" | grep -q '|'; then
-            REGION=$(echo "$FULL_INPUT" | cut -d'|' -f1 | xargs)
-            REGION_DESC=$(echo "$FULL_INPUT" | cut -d'|' -f2 | xargs)
-          else
-            REGION=$(echo "$FULL_INPUT" | xargs)
-            REGION_DESC="API 直传"
-          fi
+          REGION=$(echo "$FULL_INPUT" | cut -d'|' -f1 | xargs)
           echo "DEPLOY_REGION=$REGION" >> $GITHUB_ENV
-          echo "REGION_DESC=$REGION_DESC" >> $GITHUB_ENV
 
       - name: 解析变量
         run: |
-          # Modal 令牌
+          # 优先使用手动输入的参数，没填则使用仓库的 Secrets
           echo "RESOLVED_MODAL_TOKEN_ID=${{ github.event.inputs.modal_token_id || secrets.MODAL_TOKEN_ID }}" >> $GITHUB_ENV
           echo "RESOLVED_MODAL_TOKEN_SECRET=${{ github.event.inputs.modal_token_secret || secrets.MODAL_TOKEN_SECRET }}" >> $GITHUB_ENV
-          
-          # Komari 配置
           echo "RESOLVED_KOMARI_SERVER=${{ github.event.inputs.komari_server || secrets.KOMARI_SERVER }}" >> $GITHUB_ENV
           echo "RESOLVED_KOMARI_KEY=${{ github.event.inputs.komari_key || secrets.KOMARI_KEY }}" >> $GITHUB_ENV
 
-      - name: 检出代码仓库
+      - name: 检出代码
         uses: actions/checkout@v4
-        with:
-          ref: main
 
-      - name: 设置Python环境
+      - name: 设置 Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: 安装依赖
-        run: |
-          pip install modal fastapi==0.115.12 [cite: 37, 89]
+      - name: 安装 Modal
+        run: pip install modal
 
-      - name: 配置Modal令牌
-        run: |
-          modal token set --token-id "$RESOLVED_MODAL_TOKEN_ID" --token-secret "$RESOLVED_MODAL_TOKEN_SECRET" [cite: 38]
+      - name: 配置 Modal 令牌
+        run: modal token set --token-id "$RESOLVED_MODAL_TOKEN_ID" --token-secret "$RESOLVED_MODAL_TOKEN_SECRET"
 
-      - name: 创建或更新Modal密钥 (Komari)
+      - name: 创建 Modal 密钥 (Secret)
         run: |
-          # 删除旧的监控密钥（如果存在）
+          # 这一步非常重要：把 GitHub 的输入传递给 Modal 容器
           modal secret delete komari-secrets 2>/dev/null || true
-          sleep 2
-          # 创建新的 Komari 专用密钥 
           modal secret create komari-secrets \
             KOMARI_SERVER="$RESOLVED_KOMARI_SERVER" \
             KOMARI_KEY="$RESOLVED_KOMARI_KEY" \
-            AUTO_ACCESS="${{ secrets.AUTO_ACCESS || 'true' }}" \
-            KEEPALIVE_INTERVAL="${{ secrets.KEEPALIVE_INTERVAL || '120' }}" \
             DEPLOY_REGION="$DEPLOY_REGION"
-          echo "✅ Komari Modal密钥创建成功"
 
-      - name: 部署到Modal
-        id: deploy
+      - name: 部署到 Modal
         run: |
-          echo "🚀 正在部署到Modal..."
-          OUTPUT=$(modal deploy app.py 2>&1) [cite: 40, 91]
-          echo "$OUTPUT"
-          URL=$(echo "$OUTPUT" | grep -oP 'https://[a-zA-Z0-9._-]+\.modal\.run' | head -1)
-          if [ -z "$URL" ]; then exit 1; fi
-          echo "DEPLOY_URL=$URL" >> $GITHUB_ENV
-
-      - name: 触发初始保活请求
-        run: |
-          sleep 10
-          curl -s -o /dev/null -w "%{http_code}" "$DEPLOY_URL/health" || echo "000" [cite: 42, 93]
-
-      - name: 清理历史运行记录
-        uses: Mattraks/delete-workflow-runs@v2
-        with:
-          token: ${{ github.token }}
-          repository: ${{ github.repository }}
-          retain_days: 0
-          [cite_start]keep_minimum_runs: 1 [cite: 474, 96]
+          # 部署时，Modal 会自动读取当前目录下的 app.py
+          modal deploy app.py
