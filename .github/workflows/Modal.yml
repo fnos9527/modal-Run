@@ -16,17 +16,17 @@ on:
           - 'us-east-1 | AWS 弗吉尼亚州'
           - 'eu-central-1 | AWS 法兰克福'
       modal_token_id:
-        description: 'Modal ID (ak-xxxxx)'
+        description: 'Modal ID (若不填则使用仓库 Secrets)'
         required: false
       modal_token_secret:
-        description: 'Modal Secret (as-xxxxx)'
+        description: 'Modal Secret (若不填则使用仓库 Secrets)'
         required: false
       komari_server:
-        description: 'Komari 地址 (例如 s1.abc.com:5000)'
-        required: true
+        description: 'Komari 地址 (若不填则使用仓库 Secrets)'
+        required: false
       komari_key:
-        description: 'Komari 密钥'
-        required: true
+        description: 'Komari 密钥 (若不填则使用仓库 Secrets)'
+        required: false
 
 jobs:
   deploy:
@@ -35,23 +35,58 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 解析变量
+      - name: 变量逻辑解析
         run: |
+          # 核心逻辑：如果 inputs 为空，则取 secrets 的值
+          
+          # 处理 Token ID
+          if [ -n "${{ github.event.inputs.modal_token_id }}" ]; then
+            echo "MID=${{ github.event.inputs.modal_token_id }}" >> $GITHUB_ENV
+          else
+            echo "MID=${{ secrets.MODAL_TOKEN_ID }}" >> $GITHUB_ENV
+          fi
+
+          # 处理 Token Secret
+          if [ -n "${{ github.event.inputs.modal_token_secret }}" ]; then
+            echo "MSEC=${{ github.event.inputs.modal_token_secret }}" >> $GITHUB_ENV
+          else
+            echo "MSEC=${{ secrets.MODAL_TOKEN_SECRET }}" >> $GITHUB_ENV
+          fi
+
+          # 处理 Komari Server
+          if [ -n "${{ github.event.inputs.komari_server }}" ]; then
+            echo "K_SRV=${{ github.event.inputs.komari_server }}" >> $GITHUB_ENV
+          else
+            echo "K_SRV=${{ secrets.KOMARI_SERVER }}" >> $GITHUB_ENV
+          fi
+
+          # 处理 Komari Key
+          if [ -n "${{ github.event.inputs.komari_key }}" ]; then
+            echo "K_KEY=${{ github.event.inputs.komari_key }}" >> $GITHUB_ENV
+          else
+            echo "K_KEY=${{ secrets.KOMARI_KEY }}" >> $GITHUB_ENV
+          fi
+
+          # 处理区域
           REGION=$(echo "${{ github.event.inputs.deploy_region }}" | cut -d'|' -f1 | xargs)
           echo "DEPLOY_REGION=$REGION" >> $GITHUB_ENV
-          echo "MID=${{ github.event.inputs.modal_token_id || secrets.MODAL_TOKEN_ID }}" >> $GITHUB_ENV
-          echo "MSEC=${{ github.event.inputs.modal_token_secret || secrets.MODAL_TOKEN_SECRET }}" >> $GITHUB_ENV
-          echo "K_SRV=${{ github.event.inputs.komari_server || secrets.KOMARI_SERVER }}" >> $GITHUB_ENV
-          echo "K_KEY=${{ github.event.inputs.komari_key || secrets.KOMARI_KEY }}" >> $GITHUB_ENV
 
       - name: 设置环境并部署
         run: |
+          # 检查最终变量是否依然为空
+          if [ -z "$MID" ] || [ -z "$MSEC" ]; then
+            echo "❌ 错误：检测到 Modal Token 为空！请确保 Settings -> Secrets 中已正确添加。"
+            exit 1
+          fi
+          
           pip install modal
           modal token set --token-id "$MID" --token-secret "$MSEC"
-          # 这一步创建名为 komari-secrets 的密钥
+          
+          # 创建保险箱
           modal secret delete komari-secrets 2>/dev/null || true
           modal secret create komari-secrets \
             KOMARI_SERVER="$K_SRV" \
             KOMARI_KEY="$K_KEY" \
             DEPLOY_REGION="$DEPLOY_REGION"
+            
           modal deploy app.py
