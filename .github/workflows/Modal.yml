@@ -1,4 +1,4 @@
-name: Modal 容器部署 (Komari 监控)
+name: Modal 部署 (Komari 监控)
 
 on:
   workflow_dispatch:
@@ -16,82 +16,42 @@ on:
           - 'us-east-1 | AWS 弗吉尼亚州'
           - 'eu-central-1 | AWS 法兰克福'
       modal_token_id:
-        description: 'Modal 令牌ID（ak-xxxxx）'
+        description: 'Modal ID (ak-xxxxx)'
         required: false
-        default: ''
-        type: string
       modal_token_secret:
-        description: 'Modal 令牌密钥（as-xxxxx）'
+        description: 'Modal Secret (as-xxxxx)'
         required: false
-        default: ''
-        type: string
       komari_server:
-        description: 'Komari 服务端地址 (不带http, 例如: s1.example.com:5000)'
-        required: false
-        default: ''
-        type: string
+        description: 'Komari 地址 (例如 s1.abc.com:5000)'
+        required: true
       komari_key:
-        description: 'Komari 密钥 (Key/Token)'
-        required: false
-        default: ''
-        type: string
+        description: 'Komari 密钥'
+        required: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      actions: write
     steps:
-      - name: 解析部署区域
-        run: |
-          FULL_INPUT="${{ github.event.inputs.deploy_region }}"
-          if echo "$FULL_INPUT" | grep -q '|'; then
-            REGION=$(echo "$FULL_INPUT" | cut -d'|' -f1 | xargs)
-          else
-            REGION=$(echo "$FULL_INPUT" | xargs)
-          fi
-          echo "DEPLOY_REGION=$REGION" >> $GITHUB_ENV
-
-      - name: 解析变量
-        run: |
-          echo "RESOLVED_MODAL_TOKEN_ID=${{ github.event.inputs.modal_token_id || secrets.MODAL_TOKEN_ID }}" >> $GITHUB_ENV
-          echo "RESOLVED_MODAL_TOKEN_SECRET=${{ github.event.inputs.modal_token_secret || secrets.MODAL_TOKEN_SECRET }}" >> $GITHUB_ENV
-          echo "RESOLVED_KOMARI_SERVER=${{ github.event.inputs.komari_server || secrets.KOMARI_SERVER }}" >> $GITHUB_ENV
-          echo "RESOLVED_KOMARI_KEY=${{ github.event.inputs.komari_key || secrets.KOMARI_KEY }}" >> $GITHUB_ENV
-
       - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: 设置 Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: 安装依赖
-        run: pip install modal fastapi==0.115.12
-
-      - name: 配置 Modal 令牌
-        run: modal token set --token-id "$RESOLVED_MODAL_TOKEN_ID" --token-secret "$RESOLVED_MODAL_TOKEN_SECRET"
-
-      - name: 创建 Modal 密钥 (Secret)
+      - name: 解析变量
         run: |
-          # 删除旧的监控密钥并创建新的 Komari 专用密钥
+          REGION=$(echo "${{ github.event.inputs.deploy_region }}" | cut -d'|' -f1 | xargs)
+          echo "DEPLOY_REGION=$REGION" >> $GITHUB_ENV
+          echo "MID=${{ github.event.inputs.modal_token_id || secrets.MODAL_TOKEN_ID }}" >> $GITHUB_ENV
+          echo "MSEC=${{ github.event.inputs.modal_token_secret || secrets.MODAL_TOKEN_SECRET }}" >> $GITHUB_ENV
+          echo "K_SRV=${{ github.event.inputs.komari_server || secrets.KOMARI_SERVER }}" >> $GITHUB_ENV
+          echo "K_KEY=${{ github.event.inputs.komari_key || secrets.KOMARI_KEY }}" >> $GITHUB_ENV
+
+      - name: 设置环境并部署
+        run: |
+          pip install modal
+          modal token set --token-id "$MID" --token-secret "$MSEC"
+          # 这一步创建名为 komari-secrets 的密钥
           modal secret delete komari-secrets 2>/dev/null || true
           modal secret create komari-secrets \
-            KOMARI_SERVER="$RESOLVED_KOMARI_SERVER" \
-            KOMARI_KEY="$RESOLVED_KOMARI_KEY" \
+            KOMARI_SERVER="$K_SRV" \
+            KOMARI_KEY="$K_KEY" \
             DEPLOY_REGION="$DEPLOY_REGION"
-          echo "✅ Komari Secret 创建完成"
-
-      - name: 部署到 Modal
-        run: |
           modal deploy app.py
-
-      - name: 清理运行记录
-        uses: Mattraks/delete-workflow-runs@v2
-        with:
-          token: ${{ github.token }}
-          repository: ${{ github.repository }}
-          retain_days: 0
-          keep_minimum_runs: 1
