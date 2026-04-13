@@ -1,79 +1,70 @@
 import os
-import json
 import time
 import subprocess
 import platform
 import threading
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 import modal
 
 # ========== Modal 配置 ==========
 DEPLOY_REGION = os.environ.get('DEPLOY_REGION', 'us-east')
 
-# ========== Modal 镜像定义 ==========
 image = modal.Image.debian_slim().pip_install(
     "fastapi==0.115.12",
     "requests",
     "psutil",
-    "uvicorn",
 )
 
 app = modal.App("komari-app", image=image)
 web_app = FastAPI()
 
-# ========== 状态控制 ==========
 _agent_started = False
 _agent_lock = threading.Lock()
 
-# ========== 伪装页面 HTML ==========
-FAKE_HTML = """<!DOCTYPE html>
-<html>
-<head><title>System Status</title></head>
-<body><h1 style='text-align:center;margin-top:20%'>Node Operational</h1></body>
-</html>"""
-
-# ========== 核心功能 ==========
+# ========== 辅助功能 ==========
 
 def write_log(message):
     try:
         with open('/tmp/agent.log', 'a') as f:
-            f.write(f"[{time.ctime()}] {message}\n")
+            f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {message}\n")
     except:
         pass
 
-def get_arch():
-    m = platform.machine().lower()
-    return 'arm64' if 'arm' in m or 'aarch64' in m else 'amd64'
-
 def run_komari_agent():
-    """下载并启动 Komari Agent"""
     server = os.environ.get('KOMARI_SERVER', '')
     key = os.environ.get('KOMARI_KEY', '')
     
+    # 记录环境变量状态（不打印具体的Key，保护安全）
+    if not server:
+        write_log("Error: KOMARI_SERVER environment variable is empty!")
+    if not key:
+        write_log("Error: KOMARI_KEY environment variable is empty!")
+    
     if not server or not key:
-        write_log("Missing SERVER or KEY")
         return
 
-    arch = get_arch()
+    arch = platform.machine().lower()
+    arch_suffix = 'arm64' if 'arm' in arch or 'aarch64' in arch else 'amd64'
+    
     path = "/tmp/sys_worker"
-    url = f"https://github.com/komari-monitor/komari/releases/latest/download/komari-linux-{arch}"
+    url = f"https://github.com/komari-monitor/komari/releases/latest/download/komari-linux-{arch_suffix}"
 
     try:
         import requests
-        write_log(f"Downloading Komari for {arch}...")
+        write_log(f"Downloading Agent from: {url}")
         r = requests.get(url, timeout=30)
         r.raise_for_status()
         with open(path, 'wb') as f:
             f.write(r.content)
         
         os.chmod(path, 0o755)
-        # 启动命令
-        cmd = f"nohup {path} -s {server} -k {key} >/dev/null 2>&1 &"
+        # 启动命令：确保使用 -s 和 -k 参数
+        cmd = f"nohup {path} -s {server} -k {key} > /tmp/komari_exec.log 2>&1 &"
         subprocess.Popen(cmd, shell=True, start_new_session=True)
-        write_log("Komari Agent started.")
+        write_log("Agent process launched.")
     except Exception as e:
-        write_log(f"Error: {str(e)}")
+        write_log(f"Critical Error: {str(e)}")
 
 def ensure_agent_started():
     global _agent_started
@@ -83,7 +74,7 @@ def ensure_agent_started():
         _agent_started = True
     threading.Thread(target=run_komari_agent, daemon=True).start()
 
-# ========== 路由 ==========
+# ========== 路由接口 ==========
 
 @web_app.on_event("startup")
 async def startup_event():
@@ -91,13 +82,17 @@ async def startup_event():
 
 @web_app.get("/")
 async def root():
-    return HTMLResponse(content=FAKE_HTML)
+    return HTMLResponse("<h1>Node Status: Online</h1>")
 
-@web_app.get("/health")
-async def health():
-    return {"status": "ok"}
+# 这个接口现在修好了！
+@web_app.get("/logs")
+async def get_logs():
+    if os.path.exists('/tmp/agent.log'):
+        with open('/tmp/agent.log', 'r') as f:
+            return JSONResponse({"logs": f.readlines()})
+    return JSONResponse({"logs": ["Log file not created yet."]})
 
-# ========== Modal 入口 ==========
+# ========== Modal 运行入口 ==========
 
 @app.function(
     secrets=[modal.Secret.from_name("komari-secrets")],
