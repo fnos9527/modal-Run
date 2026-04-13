@@ -19,13 +19,12 @@ def write_log(msg):
         f.write(f"[{time.ctime()}] {msg}\n")
 
 def run_agent():
-    # 自动处理地址
+    # 自动处理地址：Cloudflare 隧道必须走 HTTPS (443)
     raw_server = os.environ.get('KOMARI_SERVER', '')
-    # 彻底去掉所有协议头和端口，由下方逻辑统一分配
     server_host = raw_server.replace('https://', '').replace('http://', '').split(':')[0]
     
-    # 尝试不使用 TLS 的普通连接方式
-    server = f"{server_host}:80" 
+    # 强制指定 443 端口，因为 Cloudflare 隧道基于 HTTPS
+    server = f"{server_host}:443"
     key = os.environ.get('KOMARI_KEY', '')
     
     if not server_host or not key:
@@ -46,16 +45,19 @@ def run_agent():
             f.write(r.content)
         os.chmod("/tmp/agent", 0o755)
         
-        # --- 这里的改变：删掉了 --tls 参数，改走普通连接 ---
-        write_log(f"Connecting to {server} (Plain Text mode)...")
+        # --- 核心修正：使用正确的新版命令参数 ---
+        # 1. 使用 'agent' 子命令
+        # 2. 使用 --server 和 --key 全称
+        # 3. 增加 --tls (Cloudflare 必须加密)
+        write_log(f"Connecting to {server} via Cloudflare Tunnel...")
         with open('/tmp/exec.log', 'w') as log_file:
             subprocess.Popen(
-                ["/tmp/agent", "-s", server, "-k", key],
+                ["/tmp/agent", "agent", "--server", server, "--key", key, "--tls"],
                 stdout=log_file,
                 stderr=log_file,
                 preexec_fn=os.setsid
             )
-        write_log("Agent launched in Plain mode. Monitoring logs...")
+        write_log("Agent launched with correct command. Checking connection...")
     except Exception as e:
         write_log(f"Failed: {str(e)}")
 
@@ -65,20 +67,20 @@ async def startup():
 
 @web_app.get("/")
 async def index():
-    return HTMLResponse("<h1>Status: Check Logs</h1>")
+    return HTMLResponse("<h1>System Status: Running</h1>")
 
 @web_app.get("/logs")
 async def logs():
-    data = {"setup": [], "error_detail": []}
+    data = {"setup": [], "agent_output": []}
     if os.path.exists('/tmp/agent.log'):
         with open('/tmp/agent.log', 'r') as f:
             data["setup"] = f.readlines()
     if os.path.exists('/tmp/exec.log'):
         with open('/tmp/exec.log', 'r') as f:
-            data["error_detail"] = f.readlines()
+            data["agent_output"] = f.readlines()
     return data
 
-# 3. Modal 部署
+# 3. Modal 部署入口
 @app.function(
     secrets=[modal.Secret.from_name("komari-secrets")],
     region=[os.environ.get('DEPLOY_REGION', 'us-east')],
