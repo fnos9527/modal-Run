@@ -4,7 +4,7 @@ import subprocess
 import platform
 import threading
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 import modal
 
 # 1. 镜像配置
@@ -19,22 +19,23 @@ def write_log(msg):
         f.write(f"[{time.ctime()}] {msg}\n")
 
 def run_agent():
-    # 处理地址：Cloudflare 隧道必须走 HTTPS (443)
+    # 获取变量并自动补全协议
     raw_server = os.environ.get('KOMARI_SERVER', '')
-    server_host = raw_server.replace('https://', '').replace('http://', '').split(':')[0]
+    if not raw_server.startswith('http'):
+        endpoint = f"https://{raw_server}"
+    else:
+        endpoint = raw_server
+        
+    token = os.environ.get('KOMARI_KEY', '')
     
-    # 强制指定 443 端口，确保穿透 Cloudflare
-    server = f"{server_host}:443"
-    key = os.environ.get('KOMARI_KEY', '')
-    
-    if not server_host or not key:
-        write_log("Error: SERVER or KEY is empty!")
+    if not endpoint or not token:
+        write_log("Error: SERVER or TOKEN is missing!")
         return
 
-    # 清理旧进程
+    # 清理可能残留的进程
     subprocess.run("pkill -9 komari-agent", shell=True)
 
-    # 3. 根据架构选择下载地址（使用你提供的最新 Agent 链接）
+    # 3. 下载官方指定的最新版 Agent
     arch = platform.machine().lower()
     if 'arm' in arch or 'aarch64' in arch:
         url = "https://github.com/komari-monitor/komari-agent/releases/download/1.1.93/komari-agent-linux-arm64"
@@ -45,25 +46,25 @@ def run_agent():
     
     try:
         import requests
-        write_log(f"Downloading REAL Agent from: {url}")
+        write_log(f"Downloading Agent from GitHub...")
         r = requests.get(url, timeout=15)
         with open(path, "wb") as f:
             f.write(r.content)
         os.chmod(path, 0o755)
         
-        # --- 核心修正：使用专用 Agent 的启动命令 ---
-        # 专用客户端通常使用 -s 和 -k，且 Cloudflare 必须带 --tls
-        write_log(f"Connecting to {server} via Cloudflare...")
+        # --- 核心启动逻辑 (完全对应官方参数) ---
+        write_log(f"Starting Agent with endpoint: {endpoint}")
         with open('/tmp/exec.log', 'w') as log_file:
+            # 模仿官方脚本的启动方式
             subprocess.Popen(
-                [path, "-s", server, "-k", key, "--tls"],
+                [path, "-e", endpoint, "-t", token],
                 stdout=log_file,
                 stderr=log_file,
                 preexec_fn=os.setsid
             )
-        write_log("Real Agent launched successfully!")
+        write_log("Agent is now running in background.")
     except Exception as e:
-        write_log(f"Failed: {str(e)}")
+        write_log(f"Critical Failure: {str(e)}")
 
 @web_app.on_event("startup")
 async def startup():
@@ -71,20 +72,20 @@ async def startup():
 
 @web_app.get("/")
 async def index():
-    return HTMLResponse("<h1>Komari Agent: Running</h1>")
+    return HTMLResponse("<h1>Komari Agent Status: Online</h1>")
 
 @web_app.get("/logs")
 async def logs():
-    data = {"setup": [], "agent_output": []}
+    data = {"setup": [], "agent_runtime_logs": []}
     if os.path.exists('/tmp/agent.log'):
         with open('/tmp/agent.log', 'r') as f:
             data["setup"] = f.readlines()
     if os.path.exists('/tmp/exec.log'):
         with open('/tmp/exec.log', 'r') as f:
-            data["agent_output"] = f.readlines()
+            data["agent_runtime_logs"] = f.readlines()
     return data
 
-# 4. Modal 部署
+# 4. Modal 部署入口
 @app.function(
     secrets=[modal.Secret.from_name("komari-secrets")],
     region=[os.environ.get('DEPLOY_REGION', 'us-east')],
