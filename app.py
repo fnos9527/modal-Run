@@ -7,96 +7,63 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 import modal
 
-# ========== Modal 配置 ==========
-DEPLOY_REGION = os.environ.get('DEPLOY_REGION', 'us-east')
+# 1. 定义镜像
+image = modal.Image.debian_slim().pip_install("fastapi", "requests")
 
-image = modal.Image.debian_slim().pip_install(
-    "fastapi==0.115.12",
-    "requests",
-    "psutil",
-)
-
+# 2. 创建 App
 app = modal.App("komari-app", image=image)
 web_app = FastAPI()
 
-_agent_started = False
-_agent_lock = threading.Lock()
+# 写入日志的函数
+def write_log(msg):
+    with open('/tmp/agent.log', 'a') as f:
+        f.write(f"[{time.ctime()}] {msg}\n")
 
-# ========== 辅助功能 ==========
-
-def write_log(message):
-    try:
-        with open('/tmp/agent.log', 'a') as f:
-            f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {message}\n")
-    except:
-        pass
-
-def run_komari_agent():
+# 启动 Agent 的函数
+def run_agent():
+    # 从环境变量读取（这些变量必须由 Secret 提供）
     server = os.environ.get('KOMARI_SERVER', '')
     key = os.environ.get('KOMARI_KEY', '')
     
-    # 记录环境变量状态（不打印具体的Key，保护安全）
-    if not server:
-        write_log("Error: KOMARI_SERVER environment variable is empty!")
-    if not key:
-        write_log("Error: KOMARI_KEY environment variable is empty!")
-    
     if not server or not key:
+        write_log(f"Error: Server({server}) or Key is empty!")
         return
 
-    arch = platform.machine().lower()
-    arch_suffix = 'arm64' if 'arm' in arch or 'aarch64' in arch else 'amd64'
+    arch = 'arm64' if 'arm' in platform.machine().lower() else 'amd64'
+    url = f"https://github.com/komari-monitor/komari/releases/latest/download/komari-linux-{arch}"
     
-    path = "/tmp/sys_worker"
-    url = f"https://github.com/komari-monitor/komari/releases/latest/download/komari-linux-{arch_suffix}"
-
     try:
         import requests
-        write_log(f"Downloading Agent from: {url}")
-        r = requests.get(url, timeout=30)
-        r.raise_for_status()
-        with open(path, 'wb') as f:
+        write_log("Downloading agent...")
+        r = requests.get(url)
+        with open("/tmp/agent", "wb") as f:
             f.write(r.content)
+        os.chmod("/tmp/agent", 0o755)
         
-        os.chmod(path, 0o755)
-        # 启动命令：确保使用 -s 和 -k 参数
-        cmd = f"nohup {path} -s {server} -k {key} > /tmp/komari_exec.log 2>&1 &"
-        subprocess.Popen(cmd, shell=True, start_new_session=True)
-        write_log("Agent process launched.")
+        # 启动
+        subprocess.Popen(f"nohup /tmp/agent -s {server} -k {key} >/dev/null 2>&1 &", shell=True)
+        write_log("Agent started successfully!")
     except Exception as e:
-        write_log(f"Critical Error: {str(e)}")
-
-def ensure_agent_started():
-    global _agent_started
-    with _agent_lock:
-        if _agent_started:
-            return
-        _agent_started = True
-    threading.Thread(target=run_komari_agent, daemon=True).start()
-
-# ========== 路由接口 ==========
+        write_log(f"Failed: {str(e)}")
 
 @web_app.on_event("startup")
-async def startup_event():
-    ensure_agent_started()
+async def startup():
+    threading.Thread(target=run_agent, daemon=True).start()
 
 @web_app.get("/")
-async def root():
-    return HTMLResponse("<h1>Node Status: Online</h1>")
+async def index():
+    return HTMLResponse("<h1>Running</h1>")
 
-# 这个接口现在修好了！
 @web_app.get("/logs")
-async def get_logs():
+async def logs():
     if os.path.exists('/tmp/agent.log'):
-        with open('/tmp/agent.log', 'r') as f:
-            return JSONResponse({"logs": f.readlines()})
-    return JSONResponse({"logs": ["Log file not created yet."]})
+        return {"logs": open('/tmp/agent.log').readlines()}
+    return {"msg": "No logs yet"}
 
-# ========== Modal 运行入口 ==========
-
+# 3. 核心部署入口：必须指定 secrets 名字！！！
 @app.function(
     secrets=[modal.Secret.from_name("komari-secrets")],
-    region=[DEPLOY_REGION],
+    region=[os.environ.get('DEPLOY_REGION', 'us-east')],
 )
 @modal.asgi_app()
 def fastapi_app():
